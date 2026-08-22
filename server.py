@@ -1,11 +1,13 @@
 """
 infra_guard.server
 
-Exposes scan_terraform as an MCP tool over stdio, so an MCP client
-(Claude Code, Claude Desktop, Cursor) can scan Terraform for security
-misconfigurations and get back structured findings.
+Exposes scan_terraform as an MCP tool over stdio or Streamable HTTP, so an
+MCP client (Claude Code, Claude Desktop, Cursor) can scan Terraform for
+security misconfigurations and get back structured findings.
 """
 
+import argparse
+import os
 from typing import Any
 
 from mcp.server import MCPServer
@@ -34,4 +36,21 @@ def scan_terraform_file(file_content: str, filename: str = "main.tf") -> dict[st
 
 
 if __name__ == "__main__":
-    mcp.run()
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "--transport",
+        choices=["stdio", "streamable-http"],
+        default="stdio",
+        help="stdio for local MCP clients (Claude Code, Claude Desktop); "
+        "streamable-http for remote deployment",
+    )
+    parser.add_argument("--host", default=os.environ.get("HOST", "0.0.0.0"))
+    parser.add_argument("--port", type=int, default=int(os.environ.get("PORT", 8000)))
+    args = parser.parse_args()
+
+    if args.transport == "stdio":
+        mcp.run()
+    else:
+        # Stateless: each tool call is self-contained, so no session state
+        # needs to survive between requests or across restarts/scaling.
+        mcp.run(transport="streamable-http", host=args.host, port=args.port, stateless_http=True)
