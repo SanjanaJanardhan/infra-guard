@@ -20,7 +20,7 @@ I did cloud infrastructure work at A.P. Moller–Maersk — Terraform, Docker, A
 scanner.py   → core engine: scan_terraform(...) / scan_dockerfile(...) -> structured dict
 server.py    → wraps both as MCP tools, served over stdio or Streamable HTTP
 api.py       → wraps both as a plain REST API (POST /api/scan, POST /api/scan-dockerfile)
-frontend/    → React + Vite playground that calls api.py (Terraform only, for now)
+frontend/    → React + Vite playground that calls api.py, with a Terraform/Dockerfile toggle
 ```
 
 `scanner.py` shells out to the Checkov CLI, parses its JSON output, and returns the same shape regardless of which framework ran:
@@ -129,7 +129,7 @@ Python · [Checkov](https://www.checkov.io/) · [MCP Python SDK](https://github.
 - [x] Streamable HTTP transport
 - [x] Deployed to Railway
 - [x] Web frontend with a live playground
-- [x] Dockerfile scanning (scanner, MCP tool, REST API — not yet in the playground UI)
+- [x] Dockerfile scanning, including a Terraform/Dockerfile toggle in the playground
 - [ ] Cost-impact estimate for findings
 
 ## License

@@ -1,8 +1,30 @@
 import { useState } from 'react'
 import sampleTf from './sample.tf?raw'
+import sampleDockerfile from './sample.Dockerfile?raw'
 import './App.css'
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8001'
+
+const SCAN_TYPES = {
+  terraform: {
+    label: 'Terraform',
+    defaultFilename: 'main.tf',
+    sample: sampleTf,
+    sampleFilename: 'insecure_example.tf',
+    endpoint: '/api/scan',
+    placeholder: 'Paste your Terraform (.tf) code here…',
+    emptyMessage: 'Paste Terraform and hit Scan to see structured findings here.',
+  },
+  dockerfile: {
+    label: 'Dockerfile',
+    defaultFilename: 'Dockerfile',
+    sample: sampleDockerfile,
+    sampleFilename: 'Dockerfile',
+    endpoint: '/api/scan-dockerfile',
+    placeholder: 'Paste your Dockerfile here…',
+    emptyMessage: 'Paste a Dockerfile and hit Scan to see structured findings here.',
+  },
+}
 
 function Finding({ finding }) {
   const [open, setOpen] = useState(false)
@@ -30,11 +52,23 @@ function Finding({ finding }) {
 }
 
 function App() {
+  const [scanType, setScanType] = useState('terraform')
   const [code, setCode] = useState('')
-  const [filename, setFilename] = useState('main.tf')
+  const [filename, setFilename] = useState(SCAN_TYPES.terraform.defaultFilename)
   const [result, setResult] = useState(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState(null)
+
+  const config = SCAN_TYPES[scanType]
+
+  function switchType(type) {
+    if (type === scanType) return
+    setScanType(type)
+    setCode('')
+    setFilename(SCAN_TYPES[type].defaultFilename)
+    setResult(null)
+    setError(null)
+  }
 
   async function handleScan() {
     if (!code.trim()) return
@@ -42,7 +76,7 @@ function App() {
     setError(null)
     setResult(null)
     try {
-      const res = await fetch(`${API_URL}/api/scan`, {
+      const res = await fetch(`${API_URL}${config.endpoint}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ file_content: code, filename }),
@@ -59,8 +93,8 @@ function App() {
   }
 
   function loadSample() {
-    setCode(sampleTf)
-    setFilename('insecure_example.tf')
+    setCode(config.sample)
+    setFilename(config.sampleFilename)
     setResult(null)
     setError(null)
   }
@@ -70,7 +104,7 @@ function App() {
       <header className="topbar">
         <div className="brand">
           <span className="brand-mark">infra-guard</span>
-          <span className="brand-tagline">Terraform security scanner, powered by Checkov</span>
+          <span className="brand-tagline">Terraform &amp; Dockerfile security scanner, powered by Checkov</span>
         </div>
         <a
           className="github-link"
@@ -85,7 +119,20 @@ function App() {
       <main className="layout">
         <section className="panel editor-panel">
           <div className="panel-header">
-            <span>{filename}</span>
+            <div className="header-left">
+              <div className="mode-toggle">
+                {Object.entries(SCAN_TYPES).map(([type, cfg]) => (
+                  <button
+                    key={type}
+                    className={type === scanType ? 'active' : ''}
+                    onClick={() => switchType(type)}
+                  >
+                    {cfg.label}
+                  </button>
+                ))}
+              </div>
+              <span className="filename">{filename}</span>
+            </div>
             <div className="panel-actions">
               <button className="btn-ghost" onClick={loadSample}>
                 Load sample
@@ -98,7 +145,7 @@ function App() {
           <textarea
             className="editor"
             spellCheck="false"
-            placeholder="Paste your Terraform (.tf) code here…"
+            placeholder={config.placeholder}
             value={code}
             onChange={(e) => setCode(e.target.value)}
           />
@@ -109,9 +156,7 @@ function App() {
             <span>Findings</span>
           </div>
           <div className="results-body">
-            {!result && !error && !loading && (
-              <p className="placeholder">Paste Terraform and hit Scan to see structured findings here.</p>
-            )}
+            {!result && !error && !loading && <p className="placeholder">{config.emptyMessage}</p>}
             {loading && <p className="placeholder">Running Checkov…</p>}
             {error && <p className="error-msg">{error}</p>}
             {result && (
