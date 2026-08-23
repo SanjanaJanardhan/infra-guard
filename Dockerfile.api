@@ -11,4 +11,4 @@ COPY scanner.py server.py api.py ./
 
 EXPOSE 8000
 
-CMD ["uv", "run", "python3", "server.py", "--transport", "streamable-http"]
+CMD ["uv", "run", "python3", "api.py"]

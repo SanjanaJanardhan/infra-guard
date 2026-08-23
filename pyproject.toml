@@ -5,5 +5,7 @@ description = "MCP server that scans Terraform for real security misconfiguratio
 requires-python = ">=3.13"
 dependencies = [
     "checkov>=3.3.13",
+    "fastapi>=0.141.1",
     "mcp[cli]>=2.0.0",
+    "uvicorn[standard]>=0.52.4",
 ]

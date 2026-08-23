@@ -4,7 +4,9 @@ An MCP server that scans Terraform for real security misconfigurations — open 
 
 It plugs into Claude Code, Claude Desktop, or Cursor as a tool. Ask your AI assistant to review your Terraform, and it calls `infra-guard`, gets back real findings from [Checkov](https://www.checkov.io/), and explains them to you.
 
-**Live endpoint:** `https://infra-guard-production.up.railway.app/mcp`
+**Try it in the browser:** [infra-guard-frontend-production.up.railway.app](https://infra-guard-frontend-production.up.railway.app) — paste Terraform, click Scan, see real findings. No install required.
+
+**MCP endpoint:** `https://infra-guard-production.up.railway.app/mcp`
 
 ## Why this exists
 
@@ -17,6 +19,8 @@ I did cloud infrastructure work at A.P. Moller–Maersk — Terraform, Docker, A
 ```
 scanner.py   → core engine: scan_terraform(file_content, filename) -> structured dict
 server.py    → wraps it as an MCP tool, served over stdio or Streamable HTTP
+api.py       → wraps it as a plain REST API (POST /api/scan), for the web playground
+frontend/    → React + Vite playground that calls api.py
 ```
 
 `scanner.py` shells out to the Checkov CLI, parses its JSON output, and returns:
@@ -90,13 +94,33 @@ uv run python3 server.py --transport streamable-http --port 8000
 https://infra-guard-production.up.railway.app/mcp
 ```
 
+## Running the playground locally
+
+```bash
+# terminal 1 — API
+uv run python3 api.py
+
+# terminal 2 — frontend
+cd frontend
+npm install
+npm run dev
+```
+
+The frontend reads its API base URL from `VITE_API_URL` (see `frontend/.env.local`), defaulting to `http://localhost:8001`.
+
 ## Deployment
 
-Containerized with a single `Dockerfile` (Python 3.13-slim + [uv](https://docs.astral.sh/uv/)), deployed on [Railway](https://railway.app) building directly from the Dockerfile. The server reads `PORT` from the environment so it adapts to whatever port the platform assigns, with no config changes needed.
+Three services on [Railway](https://railway.app), all built from Docker/Nixpacks with no manual server config:
+
+- **MCP server** — `Dockerfile`, Streamable HTTP
+- **REST API** — `Dockerfile.api`, same `scanner.py` core, powers the playground
+- **Frontend** — Railway's Nixpacks builder auto-detects the Vite app in `frontend/`; `VITE_API_URL` is set at build time to the deployed API's URL
+
+Both Python services read `PORT` from the environment, so they adapt to whatever port Railway assigns with no config changes.
 
 ## Stack
 
-Python · [Checkov](https://www.checkov.io/) · [MCP Python SDK](https://github.com/modelcontextprotocol/python-sdk) · [uv](https://docs.astral.sh/uv/) · Docker · Railway
+Python · [Checkov](https://www.checkov.io/) · [MCP Python SDK](https://github.com/modelcontextprotocol/python-sdk) · FastAPI · React · Vite · [uv](https://docs.astral.sh/uv/) · Docker · Railway
 
 ## Roadmap
 
@@ -104,9 +128,9 @@ Python · [Checkov](https://www.checkov.io/) · [MCP Python SDK](https://github.
 - [x] MCP server over stdio
 - [x] Streamable HTTP transport
 - [x] Deployed to Railway
+- [x] Web frontend with a live playground
 - [ ] Dockerfile scanning
 - [ ] Cost-impact estimate for findings
-- [ ] Web frontend with a live playground
 
 ## License
 
