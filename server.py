@@ -1,9 +1,10 @@
 """
 infra_guard.server
 
-Exposes scan_terraform as an MCP tool over stdio or Streamable HTTP, so an
-MCP client (Claude Code, Claude Desktop, Cursor) can scan Terraform for
-security misconfigurations and get back structured findings.
+Exposes scan_terraform and scan_dockerfile as MCP tools over stdio or
+Streamable HTTP, so an MCP client (Claude Code, Claude Desktop, Cursor) can
+scan Terraform or Dockerfiles for security misconfigurations and get back
+structured findings.
 """
 
 import argparse
@@ -12,7 +13,7 @@ from typing import Any
 
 from mcp.server import MCPServer
 
-from scanner import scan_terraform
+from scanner import scan_dockerfile, scan_terraform
 
 mcp = MCPServer("infra-guard")
 
@@ -33,6 +34,22 @@ def scan_terraform_file(file_content: str, filename: str = "main.tf") -> dict[st
         filename: original filename, used only for a friendlier label in output
     """
     return scan_terraform(file_content, filename)
+
+
+@mcp.tool()
+def scan_dockerfile_file(file_content: str, filename: str = "Dockerfile") -> dict[str, Any]:
+    """
+    Scan Dockerfile content for security misconfigurations using Checkov
+    and return structured findings, in the same shape as
+    scan_terraform_file (check ID, title, resource, line range, code
+    snippet). Use this whenever the user asks to review, audit, or check
+    the security of a Dockerfile.
+
+    Args:
+        file_content: the raw text of a Dockerfile
+        filename: original filename, used only for a friendlier label in output
+    """
+    return scan_dockerfile(file_content, filename)
 
 
 if __name__ == "__main__":

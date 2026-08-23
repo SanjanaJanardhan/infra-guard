@@ -1,8 +1,8 @@
 # infra-guard
 
-An MCP server that scans Terraform for real security misconfigurations — open security groups, public S3 buckets, wildcard IAM policies, hardcoded secrets — and hands back structured findings instead of a guess.
+An MCP server that scans Terraform and Dockerfiles for real security misconfigurations — open security groups, public S3 buckets, wildcard IAM policies, hardcoded secrets, containers running as root — and hands back structured findings instead of a guess.
 
-It plugs into Claude Code, Claude Desktop, or Cursor as a tool. Ask your AI assistant to review your Terraform, and it calls `infra-guard`, gets back real findings from [Checkov](https://www.checkov.io/), and explains them to you.
+It plugs into Claude Code, Claude Desktop, or Cursor as a tool. Ask your AI assistant to review your infrastructure code, and it calls `infra-guard`, gets back real findings from [Checkov](https://www.checkov.io/), and explains them to you.
 
 **Try it in the browser:** [infra-guard-frontend-production.up.railway.app](https://infra-guard-frontend-production.up.railway.app) — paste Terraform, click Scan, see real findings. No install required.
 
@@ -12,18 +12,18 @@ It plugs into Claude Code, Claude Desktop, or Cursor as a tool. Ask your AI assi
 
 I did cloud infrastructure work at A.P. Moller–Maersk — Terraform, Docker, AWS provisioning at real scale. Most portfolio projects are generic web apps; this one is the tool I actually wished existed: something that turns "does my Terraform have any obvious security holes" into a real, structured answer instead of an AI assistant's best guess.
 
-`infra-guard` doesn't guess. It runs your `.tf` file through Checkov, a real static analysis engine with hundreds of built-in AWS/Azure/GCP checks, and returns the actual findings — check ID, title, affected resource, line range, code snippet. The hosting LLM (Claude, or whatever's on the other end of the MCP connection) explains the findings in plain English. The tool's job is just to be correct.
+`infra-guard` doesn't guess. It runs your file through Checkov, a real static analysis engine with hundreds of built-in checks, and returns the actual findings — check ID, title, affected resource, line range, code snippet. The hosting LLM (Claude, or whatever's on the other end of the MCP connection) explains the findings in plain English. The tool's job is just to be correct.
 
 ## How it works
 
 ```
-scanner.py   → core engine: scan_terraform(file_content, filename) -> structured dict
-server.py    → wraps it as an MCP tool, served over stdio or Streamable HTTP
-api.py       → wraps it as a plain REST API (POST /api/scan), for the web playground
-frontend/    → React + Vite playground that calls api.py
+scanner.py   → core engine: scan_terraform(...) / scan_dockerfile(...) -> structured dict
+server.py    → wraps both as MCP tools, served over stdio or Streamable HTTP
+api.py       → wraps both as a plain REST API (POST /api/scan, POST /api/scan-dockerfile)
+frontend/    → React + Vite playground that calls api.py (Terraform only, for now)
 ```
 
-`scanner.py` shells out to the Checkov CLI, parses its JSON output, and returns:
+`scanner.py` shells out to the Checkov CLI, parses its JSON output, and returns the same shape regardless of which framework ran:
 
 ```json
 {
@@ -41,9 +41,9 @@ frontend/    → React + Vite playground that calls api.py
 }
 ```
 
-`server.py` exposes this as a single MCP tool, `scan_terraform_file(file_content, filename)`, with no interpretation layer of its own — the structured data goes straight to whatever LLM is hosting the session.
+`server.py` exposes two MCP tools, `scan_terraform_file(file_content, filename)` and `scan_dockerfile_file(file_content, filename)`, with no interpretation layer of its own — the structured data goes straight to whatever LLM is hosting the session.
 
-[`insecure_example.tf`](insecure_example.tf) is a sample file with four intentional issues (open SSH ingress, a public+unencrypted S3 bucket, a wildcard IAM policy, a hardcoded RDS password) that Checkov reliably catches — 14 passed / 34 failed checks.
+[`insecure_example.tf`](insecure_example.tf) has four intentional Terraform issues (open SSH ingress, a public+unencrypted S3 bucket, a wildcard IAM policy, a hardcoded RDS password) — 14 passed / 34 failed checks. [`insecure_example.Dockerfile`](insecure_example.Dockerfile) has five (unpinned base image, `ADD` instead of `COPY`, port 22 exposed, no `HEALTHCHECK`, runs as root) — 26 passed / 5 failed checks.
 
 ## Running it locally
 
@@ -129,7 +129,7 @@ Python · [Checkov](https://www.checkov.io/) · [MCP Python SDK](https://github.
 - [x] Streamable HTTP transport
 - [x] Deployed to Railway
 - [x] Web frontend with a live playground
-- [ ] Dockerfile scanning
+- [x] Dockerfile scanning (scanner, MCP tool, REST API — not yet in the playground UI)
 - [ ] Cost-impact estimate for findings
 
 ## License

@@ -1,15 +1,73 @@
 """
 infra_guard.scanner
 
-Wraps Checkov to produce clean, structured findings from a Terraform file.
-This is the core engine — both the MCP server and the web frontend call
-into this same module, so there's exactly one place the scanning logic lives.
+Wraps Checkov to produce clean, structured findings from Terraform or
+Dockerfile input. This is the core engine — the MCP server, the REST API,
+and the web frontend all call into this same module, so there's exactly
+one place the scanning logic lives.
 """
 
 import json
 import subprocess
 import tempfile
 import os
+
+
+def _run_checkov(file_content: str, filename: str, framework: str | None = None) -> dict:
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        file_path = os.path.join(tmp_dir, filename)
+        with open(file_path, "w") as f:
+            f.write(file_content)
+
+        cmd = ["checkov", "-f", file_path, "-o", "json", "--quiet"]
+        if framework:
+            cmd += ["--framework", framework]
+
+        result = subprocess.run(
+            cmd,
+            capture_output=True,
+            text=True,
+            timeout=60,
+        )
+
+        # Checkov exits non-zero when it finds failed checks — that's expected,
+        # not an error. Only treat it as a real failure if there's no JSON output.
+        try:
+            data = json.loads(result.stdout)
+        except json.JSONDecodeError:
+            return {
+                "error": "Could not parse file. Check for syntax errors.",
+                "raw_output": result.stdout[-2000:] + result.stderr[-2000:],
+            }
+
+    results = data.get("results", {})
+    failed = results.get("failed_checks", [])
+    summary = data.get("summary", {})
+
+    findings = []
+    for check in failed:
+        code_lines = [line for _, line in (check.get("code_block") or [])]
+        # Checkov's Dockerfile framework embeds the full scanned file path in
+        # `resource` (e.g. "/tmp/xyz/Dockerfile.FROM"); Terraform's doesn't.
+        # Normalize both to use the friendly filename.
+        resource = check["resource"].replace(file_path, filename)
+        findings.append({
+            "check_id": check["check_id"],
+            "title": check["check_name"],
+            "resource": resource,
+            "start_line": check["file_line_range"][0],
+            "end_line": check["file_line_range"][1],
+            "code_snippet": "".join(code_lines).rstrip(),
+        })
+
+    return {
+        "summary": {
+            "passed": summary.get("passed", 0),
+            "failed": summary.get("failed", len(failed)),
+            "total_checks": summary.get("passed", 0) + summary.get("failed", len(failed)),
+        },
+        "findings": findings,
+    }
 
 
 def scan_terraform(file_content: str, filename: str = "main.tf") -> dict:
@@ -37,52 +95,19 @@ def scan_terraform(file_content: str, filename: str = "main.tf") -> dict:
             ]
         }
     """
-    with tempfile.TemporaryDirectory() as tmp_dir:
-        tf_path = os.path.join(tmp_dir, filename)
-        with open(tf_path, "w") as f:
-            f.write(file_content)
+    return _run_checkov(file_content, filename)
 
-        result = subprocess.run(
-            ["checkov", "-f", tf_path, "-o", "json", "--quiet"],
-            capture_output=True,
-            text=True,
-            timeout=60,
-        )
 
-        # Checkov exits non-zero when it finds failed checks — that's expected,
-        # not an error. Only treat it as a real failure if there's no JSON output.
-        try:
-            data = json.loads(result.stdout)
-        except json.JSONDecodeError:
-            return {
-                "error": "Could not parse Terraform file. Check for syntax errors.",
-                "raw_output": result.stdout[-2000:] + result.stderr[-2000:],
-            }
+def scan_dockerfile(file_content: str, filename: str = "Dockerfile") -> dict:
+    """
+    Run Checkov against a Dockerfile's contents and return clean,
+    structured findings, in the same shape as scan_terraform.
 
-    results = data.get("results", {})
-    failed = results.get("failed_checks", [])
-    summary = data.get("summary", {})
-
-    findings = []
-    for check in failed:
-        code_lines = [line for _, line in (check.get("code_block") or [])]
-        findings.append({
-            "check_id": check["check_id"],
-            "title": check["check_name"],
-            "resource": check["resource"],
-            "start_line": check["file_line_range"][0],
-            "end_line": check["file_line_range"][1],
-            "code_snippet": "".join(code_lines).rstrip(),
-        })
-
-    return {
-        "summary": {
-            "passed": summary.get("passed", 0),
-            "failed": summary.get("failed", len(failed)),
-            "total_checks": summary.get("passed", 0) + summary.get("failed", len(failed)),
-        },
-        "findings": findings,
-    }
+    Args:
+        file_content: the raw text of a Dockerfile
+        filename: used only for a friendlier label in output
+    """
+    return _run_checkov(file_content, filename, framework="dockerfile")
 
 
 if __name__ == "__main__":

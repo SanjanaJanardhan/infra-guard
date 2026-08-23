@@ -1,9 +1,9 @@
 """
 infra_guard.api
 
-A plain REST API wrapping scan_terraform, for the web playground. Kept
-separate from server.py (the MCP server) — different client shape, same
-underlying engine.
+A plain REST API wrapping scan_terraform and scan_dockerfile, for the web
+playground. Kept separate from server.py (the MCP server) — different
+client shape, same underlying engine.
 """
 
 import os
@@ -12,7 +12,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
-from scanner import scan_terraform
+from scanner import scan_dockerfile, scan_terraform
 
 app = FastAPI(title="infra-guard API")
 
@@ -37,6 +37,12 @@ def health() -> dict[str, str]:
 @app.post("/api/scan")
 def scan(req: ScanRequest) -> dict:
     return scan_terraform(req.file_content, req.filename)
+
+
+@app.post("/api/scan-dockerfile")
+def scan_dockerfile_endpoint(req: ScanRequest) -> dict:
+    filename = req.filename if req.filename != "main.tf" else "Dockerfile"
+    return scan_dockerfile(req.file_content, filename)
 
 
 if __name__ == "__main__":
