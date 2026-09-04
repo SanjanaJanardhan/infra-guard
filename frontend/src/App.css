@@ -191,6 +191,81 @@
   gap: 6px;
 }
 
+.finding-explain {
+  padding: 12px;
+  border-top: 1px solid var(--border);
+  background: var(--bg-inset);
+}
+
+.btn-explain {
+  font-size: 12px;
+}
+
+.explain-error {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--fail);
+  font-size: 13px;
+}
+
+.explain-text {
+  font-size: 13px;
+  color: var(--text);
+  margin: 0 0 10px;
+}
+
+.diff-view {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.diff-before,
+.diff-after {
+  border-radius: 6px;
+  overflow: hidden;
+  border: 1px solid var(--border);
+}
+
+.diff-label {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  padding: 4px 8px;
+  font-family: var(--mono);
+}
+
+.diff-before .diff-label {
+  background: rgba(248, 113, 113, 0.15);
+  color: var(--fail);
+}
+
+.diff-after .diff-label {
+  background: rgba(74, 222, 128, 0.15);
+  color: var(--pass);
+}
+
+.diff-before pre,
+.diff-after pre {
+  margin: 0;
+  padding: 8px 10px;
+  font-family: var(--mono);
+  font-size: 12px;
+  white-space: pre-wrap;
+  word-break: break-word;
+  overflow-x: auto;
+  color: var(--text);
+}
+
+.diff-before pre {
+  background: rgba(248, 113, 113, 0.06);
+}
+
+.diff-after pre {
+  background: rgba(74, 222, 128, 0.06);
+}
+
 .btn-primary,
 .btn-ghost {
   border-radius: 6px;

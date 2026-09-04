@@ -46,7 +46,7 @@ function SeverityBadge({ severity }) {
   return <span className={`severity-badge severity-${level}`}>{SEVERITY_LABEL[level]}</span>
 }
 
-function Finding({ finding, active, onSelect, showResource = true }) {
+function Finding({ finding, active, onSelect, showResource = true, explainInfo, onExplain }) {
   return (
     <li className={`finding${active ? ' active' : ''}`}>
       <button className="finding-header" onClick={onSelect}>
@@ -58,6 +58,49 @@ function Finding({ finding, active, onSelect, showResource = true }) {
           {finding.start_line}–{finding.end_line}
         </span>
       </button>
+      {active && (
+        <div className="finding-explain">
+          {!explainInfo && (
+            <button className="btn-ghost btn-explain" onClick={onExplain}>
+              Explain &amp; Fix
+            </button>
+          )}
+          {explainInfo?.status === 'loading' && <p className="placeholder">Asking Claude…</p>}
+          {explainInfo?.status === 'unconfigured' && (
+            <p className="placeholder">
+              AI remediation isn't enabled on this deployment — run the API locally with your own
+              ANTHROPIC_API_KEY to try it (see README).
+            </p>
+          )}
+          {explainInfo?.status === 'error' && (
+            <div className="explain-error">
+              <span>{explainInfo.error}</span>
+              <button className="btn-ghost" onClick={onExplain}>
+                Retry
+              </button>
+            </div>
+          )}
+          {explainInfo?.status === 'done' && (
+            <div className="explain-result">
+              <p className="explain-text">{explainInfo.explanation}</p>
+              <div className="diff-view">
+                <div className="diff-before">
+                  <div className="diff-label">Before</div>
+                  <pre>
+                    <code>{finding.code_snippet}</code>
+                  </pre>
+                </div>
+                <div className="diff-after">
+                  <div className="diff-label">After</div>
+                  <pre>
+                    <code>{explainInfo.fixed_code}</code>
+                  </pre>
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
     </li>
   )
 }
@@ -87,9 +130,44 @@ function App() {
   const [selectedId, setSelectedId] = useState(null)
   const [sortMode, setSortMode] = useState('severity')
   const [collapsedGroups, setCollapsedGroups] = useState(() => new Set())
+  const [explainState, setExplainState] = useState({})
 
   const viewRef = useRef(null)
   const config = SCAN_TYPES[scanType]
+
+  async function handleExplain(finding) {
+    setExplainState((prev) => ({ ...prev, [finding._id]: { status: 'loading' } }))
+    try {
+      const res = await fetch(`${API_URL}/api/explain`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          check_id: finding.check_id,
+          title: finding.title,
+          resource: finding.resource,
+          code_snippet: finding.code_snippet,
+          framework: scanType,
+        }),
+      })
+      if (!res.ok) throw new Error(`API returned ${res.status}`)
+      const data = await res.json()
+      if (!data.configured) {
+        setExplainState((prev) => ({ ...prev, [finding._id]: { status: 'unconfigured' } }))
+      } else if (data.error) {
+        setExplainState((prev) => ({ ...prev, [finding._id]: { status: 'error', error: data.error } }))
+      } else {
+        setExplainState((prev) => ({
+          ...prev,
+          [finding._id]: { status: 'done', explanation: data.explanation, fixed_code: data.fixed_code },
+        }))
+      }
+    } catch (err) {
+      setExplainState((prev) => ({
+        ...prev,
+        [finding._id]: { status: 'error', error: err.message || 'Something went wrong.' },
+      }))
+    }
+  }
 
   function clearSelection() {
     setSelectedId(null)
@@ -145,6 +223,7 @@ function App() {
       data.findings = data.findings.map((f, i) => ({ ...f, _id: i }))
       setResult(data)
       setCollapsedGroups(new Set())
+      setExplainState({})
     } catch (err) {
       setError(err.message || 'Something went wrong while scanning.')
     } finally {
@@ -163,7 +242,7 @@ function App() {
   function handleCodeChange(value) {
     setCode(value)
     // Editing the file invalidates any highlighted range's line numbers.
-    if (selectedIndex !== null) clearSelection()
+    if (selectedId !== null) clearSelection()
   }
 
   return (
@@ -283,6 +362,8 @@ function App() {
                         finding={f}
                         active={selectedId === f._id}
                         onSelect={() => selectFinding(f._id, f)}
+                        explainInfo={explainState[f._id]}
+                        onExplain={() => handleExplain(f)}
                       />
                     ))}
                   </ul>
@@ -306,6 +387,8 @@ function App() {
                                   active={selectedId === f._id}
                                   onSelect={() => selectFinding(f._id, f)}
                                   showResource={false}
+                                  explainInfo={explainState[f._id]}
+                                  onExplain={() => handleExplain(f)}
                                 />
                               ))}
                             </ul>

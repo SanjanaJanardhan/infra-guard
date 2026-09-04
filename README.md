@@ -19,9 +19,11 @@ I did cloud infrastructure work at A.P. Moller–Maersk — Terraform, Docker, A
 ```
 scanner.py   → core engine: scan_terraform(...) / scan_dockerfile(...) -> structured dict
 server.py    → wraps both as MCP tools, served over stdio or Streamable HTTP
-api.py       → wraps both as a plain REST API (POST /api/scan, POST /api/scan-dockerfile)
-frontend/    → React + Vite playground: severity badges, click a finding to
-               scroll/highlight its lines in a CodeMirror editor, calls api.py
+api.py       → wraps both as a plain REST API (POST /api/scan, POST /api/scan-dockerfile),
+               plus POST /api/explain for optional local AI remediation
+frontend/    → React + Vite playground: severity badges, sort/group findings,
+               click a finding to scroll/highlight its lines in a CodeMirror
+               editor, "Explain & Fix" for AI-generated remediation, calls api.py
 ```
 
 `scanner.py` shells out to the Checkov CLI, parses its JSON output, and returns the same shape regardless of which framework ran:
@@ -112,6 +114,22 @@ npm run dev
 
 The frontend reads its API base URL from `VITE_API_URL` (see `frontend/.env.local`), defaulting to `http://localhost:8001`.
 
+### Enabling "Explain & Fix" (optional, local-only)
+
+Clicking a finding shows an "Explain & Fix" button that calls Claude (Haiku) to generate a plain-English explanation and a suggested fixed code snippet, grounded in that finding's real `check_id`/`resource`/`code_snippet`.
+
+This deliberately **isn't enabled on the public deployment** — the playground is public and unauthenticated, so wiring a paid API behind a button there means anyone's clicks spend your API credits. Instead, `api.py` looks for `ANTHROPIC_API_KEY` in the environment (via `.env`, loaded with `python-dotenv`) and returns `{"configured": false}` if it's missing, which the frontend renders as a plain "not enabled" message rather than a broken button.
+
+To try it locally:
+
+```bash
+cp .env.example .env
+# edit .env and add your own key from https://console.anthropic.com/
+uv run python3 api.py
+```
+
+`.env` is gitignored — never commit a real key, and never set `ANTHROPIC_API_KEY` on the Railway API service.
+
 ## Deployment
 
 Three services on [Railway](https://railway.app), all built from Docker/Nixpacks with no manual server config:
@@ -134,6 +152,7 @@ Python · [Checkov](https://www.checkov.io/) · [MCP Python SDK](https://github.
 - [x] Deployed to Railway
 - [x] Web frontend with a live playground
 - [x] Dockerfile scanning, including a Terraform/Dockerfile toggle in the playground
+- [x] AI-generated remediation ("Explain & Fix"), local-only by design
 - [ ] Cost-impact estimate for findings
 
 ## License
