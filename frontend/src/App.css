@@ -132,6 +132,65 @@
   color: var(--text-bright);
 }
 
+.sort-toggle button {
+  font-size: 11px;
+  padding: 4px 8px;
+}
+
+.resource-groups {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.resource-group {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.resource-group-header {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  background: var(--bg-inset);
+  border: none;
+  color: var(--text);
+  font-family: var(--mono);
+  font-size: 12px;
+  text-align: left;
+}
+
+.resource-group-header:hover {
+  background: #16181f;
+}
+
+.resource-group-chevron {
+  color: var(--text-dim);
+  width: 10px;
+  flex-shrink: 0;
+}
+
+.resource-group-name {
+  flex: 1;
+  color: var(--text-bright);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.resource-group-count {
+  color: var(--text-dim);
+  flex-shrink: 0;
+}
+
+.findings-list.nested {
+  padding: 8px;
+  gap: 6px;
+}
+
 .btn-primary,
 .btn-ghost {
   border-radius: 6px;

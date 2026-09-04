@@ -46,20 +46,35 @@ function SeverityBadge({ severity }) {
   return <span className={`severity-badge severity-${level}`}>{SEVERITY_LABEL[level]}</span>
 }
 
-function Finding({ finding, active, onSelect }) {
+function Finding({ finding, active, onSelect, showResource = true }) {
   return (
     <li className={`finding${active ? ' active' : ''}`}>
       <button className="finding-header" onClick={onSelect}>
         <SeverityBadge severity={finding.severity} />
         <span className="finding-check-id">{finding.check_id}</span>
         <span className="finding-title">{finding.title}</span>
-        <span className="finding-resource">{finding.resource}</span>
+        {showResource && <span className="finding-resource">{finding.resource}</span>}
         <span className="finding-lines">
           {finding.start_line}–{finding.end_line}
         </span>
       </button>
     </li>
   )
+}
+
+function bySeverity(a, b) {
+  return SEVERITY_ORDER.indexOf(a.severity) - SEVERITY_ORDER.indexOf(b.severity)
+}
+
+function groupByResource(findings) {
+  const groups = new Map()
+  for (const f of findings) {
+    if (!groups.has(f.resource)) groups.set(f.resource, [])
+    groups.get(f.resource).push(f)
+  }
+  return [...groups.entries()]
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([resource, items]) => [resource, [...items].sort(bySeverity)])
 }
 
 function App() {
@@ -69,23 +84,34 @@ function App() {
   const [result, setResult] = useState(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState(null)
-  const [selectedIndex, setSelectedIndex] = useState(null)
+  const [selectedId, setSelectedId] = useState(null)
+  const [sortMode, setSortMode] = useState('severity')
+  const [collapsedGroups, setCollapsedGroups] = useState(() => new Set())
 
   const viewRef = useRef(null)
   const config = SCAN_TYPES[scanType]
 
   function clearSelection() {
-    setSelectedIndex(null)
+    setSelectedId(null)
     applyHighlight(viewRef.current, null)
   }
 
-  function selectFinding(index, finding) {
-    if (selectedIndex === index) {
+  function selectFinding(id, finding) {
+    if (selectedId === id) {
       clearSelection()
       return
     }
-    setSelectedIndex(index)
+    setSelectedId(id)
     applyHighlight(viewRef.current, { start: finding.start_line, end: finding.end_line })
+  }
+
+  function toggleGroup(resource) {
+    setCollapsedGroups((prev) => {
+      const next = new Set(prev)
+      if (next.has(resource)) next.delete(resource)
+      else next.add(resource)
+      return next
+    })
   }
 
   function switchType(type) {
@@ -113,7 +139,12 @@ function App() {
       if (!res.ok) throw new Error(`API returned ${res.status}`)
       const data = await res.json()
       if (data.error) throw new Error(data.error)
+      // Stable per-finding id (survives re-sorting/grouping) so a selected
+      // highlight and expanded groups don't need to be re-derived from
+      // display position, which changes with sortMode.
+      data.findings = data.findings.map((f, i) => ({ ...f, _id: i }))
       setResult(data)
+      setCollapsedGroups(new Set())
     } catch (err) {
       setError(err.message || 'Something went wrong while scanning.')
     } finally {
@@ -195,6 +226,22 @@ function App() {
         <section className="panel results-panel">
           <div className="panel-header">
             <span>Findings</span>
+            {result && result.findings.length > 0 && (
+              <div className="mode-toggle sort-toggle">
+                <button
+                  className={sortMode === 'severity' ? 'active' : ''}
+                  onClick={() => setSortMode('severity')}
+                >
+                  Severity
+                </button>
+                <button
+                  className={sortMode === 'resource' ? 'active' : ''}
+                  onClick={() => setSortMode('resource')}
+                >
+                  Resource
+                </button>
+              </div>
+            )}
           </div>
           <div className="results-body">
             {!result && !error && !loading && <p className="placeholder">{config.emptyMessage}</p>}
@@ -228,19 +275,45 @@ function App() {
                     <span className="clean-check">✓</span>
                     <p>No issues found. Clean scan.</p>
                   </div>
-                ) : (
+                ) : sortMode === 'severity' ? (
                   <ul className="findings-list">
-                    {[...result.findings]
-                      .sort((a, b) => SEVERITY_ORDER.indexOf(a.severity) - SEVERITY_ORDER.indexOf(b.severity))
-                      .map((f, i) => (
-                        <Finding
-                          key={`${f.check_id}-${i}`}
-                          finding={f}
-                          active={selectedIndex === i}
-                          onSelect={() => selectFinding(i, f)}
-                        />
-                      ))}
+                    {[...result.findings].sort(bySeverity).map((f) => (
+                      <Finding
+                        key={f._id}
+                        finding={f}
+                        active={selectedId === f._id}
+                        onSelect={() => selectFinding(f._id, f)}
+                      />
+                    ))}
                   </ul>
+                ) : (
+                  <div className="resource-groups">
+                    {groupByResource(result.findings).map(([resource, items]) => {
+                      const collapsed = collapsedGroups.has(resource)
+                      return (
+                        <div className="resource-group" key={resource}>
+                          <button className="resource-group-header" onClick={() => toggleGroup(resource)}>
+                            <span className="resource-group-chevron">{collapsed ? '▸' : '▾'}</span>
+                            <span className="resource-group-name">{resource}</span>
+                            <span className="resource-group-count">{items.length}</span>
+                          </button>
+                          {!collapsed && (
+                            <ul className="findings-list nested">
+                              {items.map((f) => (
+                                <Finding
+                                  key={f._id}
+                                  finding={f}
+                                  active={selectedId === f._id}
+                                  onSelect={() => selectFinding(f._id, f)}
+                                  showResource={false}
+                                />
+                              ))}
+                            </ul>
+                          )}
+                        </div>
+                      )
+                    })}
+                  </div>
                 )}
               </>
             )}
