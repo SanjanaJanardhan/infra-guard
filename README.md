@@ -20,7 +20,8 @@ I did cloud infrastructure work at A.P. Moller–Maersk — Terraform, Docker, A
 scanner.py   → core engine: scan_terraform(...) / scan_dockerfile(...) -> structured dict
 server.py    → wraps both as MCP tools, served over stdio or Streamable HTTP
 api.py       → wraps both as a plain REST API (POST /api/scan, POST /api/scan-dockerfile)
-frontend/    → React + Vite playground that calls api.py, with a Terraform/Dockerfile toggle
+frontend/    → React + Vite playground: severity badges, click a finding to
+               scroll/highlight its lines in a CodeMirror editor, calls api.py
 ```
 
 `scanner.py` shells out to the Checkov CLI, parses its JSON output, and returns the same shape regardless of which framework ran:
@@ -33,6 +34,7 @@ frontend/    → React + Vite playground that calls api.py, with a Terraform/Doc
       "check_id": "CKV_AWS_24",
       "title": "Ensure no security groups allow ingress from 0.0.0.0:0 to port 22",
       "resource": "aws_security_group.app_sg",
+      "severity": "critical",
       "start_line": 6,
       "end_line": 24,
       "code_snippet": "resource \"aws_security_group\" \"app_sg\" { ... }"
@@ -42,6 +44,8 @@ frontend/    → React + Vite playground that calls api.py, with a Terraform/Doc
 ```
 
 `server.py` exposes two MCP tools, `scan_terraform_file(file_content, filename)` and `scan_dockerfile_file(file_content, filename)`, with no interpretation layer of its own — the structured data goes straight to whatever LLM is hosting the session.
+
+**A note on `severity`:** Checkov's open-source CLI always returns `severity: null` — real per-check severity only exists when a scan is connected to Bridgecrew/Prisma Cloud's paid platform (`--bc-api-key`), which means an account and sending scan content to that platform. This project doesn't do that, so `scanner.py` assigns severity locally from a small `_SEVERITY_MAP` keyed by check ID, falling back to `"info"` for anything unmapped. It's a deliberate, disclosed approximation, not a Checkov feature.
 
 [`insecure_example.tf`](insecure_example.tf) has four intentional Terraform issues (open SSH ingress, a public+unencrypted S3 bucket, a wildcard IAM policy, a hardcoded RDS password) — 14 passed / 34 failed checks. [`insecure_example.Dockerfile`](insecure_example.Dockerfile) has five (unpinned base image, `ADD` instead of `COPY`, port 22 exposed, no `HEALTHCHECK`, runs as root) — 26 passed / 5 failed checks.
 

@@ -1,9 +1,15 @@
-import { useState } from 'react'
+import { useRef, useState } from 'react'
+import CodeMirror from '@uiw/react-codemirror'
 import sampleTf from './sample.tf?raw'
 import sampleDockerfile from './sample.Dockerfile?raw'
+import { applyHighlight, highlightField } from './lineHighlight'
 import './App.css'
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8001'
+
+// Stable reference: CodeMirror reconfigures (and can drop external value
+// syncs) if the extensions array identity changes on every render.
+const EDITOR_EXTENSIONS = [highlightField]
 
 const SCAN_TYPES = {
   terraform: {
@@ -26,27 +32,32 @@ const SCAN_TYPES = {
   },
 }
 
-function Finding({ finding }) {
-  const [open, setOpen] = useState(false)
+const SEVERITY_ORDER = ['critical', 'high', 'medium', 'low', 'info']
+const SEVERITY_LABEL = {
+  critical: 'Critical',
+  high: 'High',
+  medium: 'Medium',
+  low: 'Low',
+  info: 'Info',
+}
 
+function SeverityBadge({ severity }) {
+  const level = SEVERITY_LABEL[severity] ? severity : 'info'
+  return <span className={`severity-badge severity-${level}`}>{SEVERITY_LABEL[level]}</span>
+}
+
+function Finding({ finding, active, onSelect }) {
   return (
-    <li className="finding">
-      <button className="finding-header" onClick={() => setOpen((o) => !o)}>
+    <li className={`finding${active ? ' active' : ''}`}>
+      <button className="finding-header" onClick={onSelect}>
+        <SeverityBadge severity={finding.severity} />
         <span className="finding-check-id">{finding.check_id}</span>
         <span className="finding-title">{finding.title}</span>
         <span className="finding-resource">{finding.resource}</span>
-        <span className="finding-chevron">{open ? '−' : '+'}</span>
+        <span className="finding-lines">
+          {finding.start_line}–{finding.end_line}
+        </span>
       </button>
-      {open && (
-        <div className="finding-body">
-          <div className="finding-meta">
-            lines {finding.start_line}–{finding.end_line}
-          </div>
-          <pre className="code-snippet">
-            <code>{finding.code_snippet}</code>
-          </pre>
-        </div>
-      )}
     </li>
   )
 }
@@ -58,8 +69,24 @@ function App() {
   const [result, setResult] = useState(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState(null)
+  const [selectedIndex, setSelectedIndex] = useState(null)
 
+  const viewRef = useRef(null)
   const config = SCAN_TYPES[scanType]
+
+  function clearSelection() {
+    setSelectedIndex(null)
+    applyHighlight(viewRef.current, null)
+  }
+
+  function selectFinding(index, finding) {
+    if (selectedIndex === index) {
+      clearSelection()
+      return
+    }
+    setSelectedIndex(index)
+    applyHighlight(viewRef.current, { start: finding.start_line, end: finding.end_line })
+  }
 
   function switchType(type) {
     if (type === scanType) return
@@ -68,6 +95,7 @@ function App() {
     setFilename(SCAN_TYPES[type].defaultFilename)
     setResult(null)
     setError(null)
+    clearSelection()
   }
 
   async function handleScan() {
@@ -75,6 +103,7 @@ function App() {
     setLoading(true)
     setError(null)
     setResult(null)
+    clearSelection()
     try {
       const res = await fetch(`${API_URL}${config.endpoint}`, {
         method: 'POST',
@@ -97,6 +126,13 @@ function App() {
     setFilename(config.sampleFilename)
     setResult(null)
     setError(null)
+    clearSelection()
+  }
+
+  function handleCodeChange(value) {
+    setCode(value)
+    // Editing the file invalidates any highlighted range's line numbers.
+    if (selectedIndex !== null) clearSelection()
   }
 
   return (
@@ -142,12 +178,17 @@ function App() {
               </button>
             </div>
           </div>
-          <textarea
+          <CodeMirror
             className="editor"
-            spellCheck="false"
-            placeholder={config.placeholder}
             value={code}
-            onChange={(e) => setCode(e.target.value)}
+            onChange={handleCodeChange}
+            placeholder={config.placeholder}
+            theme="dark"
+            height="100%"
+            extensions={EDITOR_EXTENSIONS}
+            onCreateEditor={(view) => {
+              viewRef.current = view
+            }}
           />
         </section>
 
@@ -158,7 +199,14 @@ function App() {
           <div className="results-body">
             {!result && !error && !loading && <p className="placeholder">{config.emptyMessage}</p>}
             {loading && <p className="placeholder">Running Checkov…</p>}
-            {error && <p className="error-msg">{error}</p>}
+            {error && (
+              <div className="error-banner">
+                <span>{error}</span>
+                <button className="error-dismiss" onClick={() => setError(null)} aria-label="Dismiss">
+                  ×
+                </button>
+              </div>
+            )}
             {result && (
               <>
                 <div className="summary">
@@ -176,12 +224,22 @@ function App() {
                   </div>
                 </div>
                 {result.findings.length === 0 ? (
-                  <p className="placeholder">No failed checks. Clean scan.</p>
+                  <div className="clean-state">
+                    <span className="clean-check">✓</span>
+                    <p>No issues found. Clean scan.</p>
+                  </div>
                 ) : (
                   <ul className="findings-list">
-                    {result.findings.map((f, i) => (
-                      <Finding key={`${f.check_id}-${i}`} finding={f} />
-                    ))}
+                    {[...result.findings]
+                      .sort((a, b) => SEVERITY_ORDER.indexOf(a.severity) - SEVERITY_ORDER.indexOf(b.severity))
+                      .map((f, i) => (
+                        <Finding
+                          key={`${f.check_id}-${i}`}
+                          finding={f}
+                          active={selectedIndex === i}
+                          onSelect={() => selectFinding(i, f)}
+                        />
+                      ))}
                   </ul>
                 )}
               </>
